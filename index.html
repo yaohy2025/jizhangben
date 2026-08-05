@@ -628,6 +628,19 @@ let records=JSON.parse(localStorage.getItem('ledger_records')||'[]');
 let budgets=JSON.parse(localStorage.getItem('ledger_budgets')||'{}');
 const save=()=>{localStorage.setItem('ledger_records',JSON.stringify(records));localStorage.setItem('ledger_budgets',JSON.stringify(budgets));};
 
+/* ★ 迁移：修复旧数据中以 2026/8/1 格式保存的日期，统一为 2026-08-01 */
+(function migrateSlashDates(){
+  let fixed=false;
+  records.forEach(r=>{
+    if(r.date && /^\d{4}\/\d{1,2}\/\d{1,2}$/.test(r.date)){
+      const [y,m,d]=r.date.split('/').map(Number);
+      r.date=`${y}-${pad(m)}-${pad(d)}`;
+      fixed=true;
+    }
+  });
+  if(fixed) save();
+})();
+
 const now=new Date();
 let viewMonth={y:now.getFullYear(),m:now.getMonth()+1};
 let recType='expense',recCat='food',amountStr='',editingId=null;
@@ -1284,6 +1297,16 @@ function renderGoal(){
 /* ══════════ 菜单功能 ══════════ */
 /* ★ 分类中文名 -> id */
 function catIdFromName(name,type){const c=CATS[type].find(x=>x.name===name);return c?c.id:(type==='income'?'otherin':'other');}
+/* ★ 标准化导入日期：把 2026/8/1、2026.8.1、2026年8月1日 等转成 2026-08-01 */
+function normalizeImportDate(d){
+  if(!d)return '';
+  const s=String(d).trim();
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s))return s;
+  const m=s.match(/^(\d{4})[\/\.\-年](\d{1,2})[\/\.\-月](\d{1,2})日?$/);
+  if(m)return `${m[1]}-${pad(+m[2])}-${pad(+m[3])}`;
+  const nd=new Date(s);
+  return isNaN(nd)?s:ds(nd);
+}
 /* ★ 解析 CSV（兼容带引号、双引号转义、千分位逗号） */
 function parseCSV(txt){
   txt=txt.replace(/^\uFEFF/,'');
@@ -1301,7 +1324,7 @@ function parseCSV(txt){
   const iD=col('日期'),iT=col('类型'),iC=col('分类'),iN=col('名称'),iA=col('金额'),iB=col('备注'),iTg=col('标签');
   if(iD<0||iA<0)return [];
   return rows.slice(1).map(r=>({
-    date:r[iD]||'', type:r[iT]==='收入'?'income':'expense',
+    date:normalizeImportDate(r[iD]), type:(r[iT]||'').trim()==='收入'?'income':'expense',
     catName:r[iC]||'', name:r[iN]||'', amount:parseFloat(String(r[iA]||'').replace(/,/g,'')), note:r[iB]||'',
     tags:r[iTg]?String(r[iTg]).split('|').map(t=>t.trim()).filter(Boolean):[]
   })).filter(r=>r.date&&!isNaN(r.amount)&&r.amount>0);
