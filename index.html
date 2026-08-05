@@ -124,6 +124,16 @@ body.touch .key-ok{grid-column:auto;grid-row:auto;height:54px;font-size:18px;wid
 .search-result-info b{color:var(--green)}
 mark{background:rgba(233,185,73,.35);color:inherit;border-radius:2px;padding:0 1px}
 
+/* 明细筛选：收入 / 支出 */
+.detail-filter{display:flex;gap:8px;margin-bottom:12px}
+.df-btn{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;border:1px solid var(--line);background:#fff;border-radius:10px;padding:10px;font-size:13px;font-weight:600;color:var(--ink2);cursor:pointer;font-family:inherit;transition:.2s}
+.df-btn .si{font-size:15px;font-weight:700;line-height:1}
+.df-btn[data-f="income"]:hover{border-color:var(--income);color:var(--income)}
+.df-btn[data-f="expense"]:hover{border-color:var(--red);color:var(--red)}
+.df-btn[data-f="income"].on{background:var(--income);border-color:var(--income);color:#fff;box-shadow:0 3px 10px rgba(23,138,95,.3)}
+.df-btn[data-f="expense"].on{background:var(--red);border-color:var(--red);color:#fff;box-shadow:0 3px 10px rgba(200,64,47,.3)}
+.df-btn:active{transform:scale(.97)}
+
 /* 明细 */
 .receipt{position:relative;background:#fff;border:1px solid var(--line);border-bottom:none;border-radius:10px 10px 0 0;padding:18px 18px 16px;margin-bottom:26px;animation:cardIn .5s both}
 .receipt::after{content:'';position:absolute;top:100%;left:-1px;right:-1px;height:12px;background:radial-gradient(circle at 8px 15px,transparent 9px,#fff 9.5px);background-size:16px 12px;background-repeat:repeat-x;filter:drop-shadow(0 1px 0 var(--line))}
@@ -299,6 +309,11 @@ mark{background:rgba(233,185,73,.35);color:inherit;border-radius:2px;padding:0 1
         <button class="s-clear" id="searchClear">✕</button>
       </div>
       <div class="search-tags" id="searchTags"></div>
+      <!-- ★ 新增：明细收入/支出筛选 -->
+      <div class="detail-filter" id="detailFilter">
+        <button class="df-btn" data-f="income"><span class="si">↑</span>收入</button>
+        <button class="df-btn" data-f="expense"><span class="si">↓</span>支出</button>
+      </div>
       <div class="search-result-info" id="searchInfo" hidden></div>
 
       <div class="receipt" id="receiptCard">
@@ -408,6 +423,7 @@ let recType='expense',recCat='food',amountStr='',editingId=null;
 let stPreset='month',trendType='expense';
 let stStart=ds(new Date(now.getFullYear(),now.getMonth(),1)),stEnd=todayStr();
 let searchKeyword=''; // ★ 搜索关键词
+let detailFilter=''; // ★ 明细收入/支出筛选：'' / 'income' / 'expense'
 
 /* ══════════ 工具 ══════════ */
 function toast(msg){const t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(t._tm);t._tm=setTimeout(()=>t.classList.remove('show'),1900);}
@@ -457,27 +473,36 @@ function renderHeader(){
   $('balIn').textContent=fmt(inc);$('balOut').textContent=fmt(exp);
 }
 function renderDetails(){
+  // 同步筛选按钮高亮状态
+  document.querySelectorAll('#detailFilter .df-btn').forEach(x=>x.classList.toggle('on',x.dataset.f===detailFilter));
   const allList=monthList();
-  const list=searchKeyword?allList.filter(matchSearch):allList;
-  // 小票汇总（搜索时显示搜索结果汇总）
-  $('rcTitle').textContent=searchKeyword?`搜索结果 · ${viewMonth.m}月`:`${viewMonth.m}月账单 · ${viewMonth.y}`;
+  let list=allList;
+  if(searchKeyword)list=list.filter(matchSearch);
+  if(detailFilter)list=list.filter(r=>r.type===detailFilter);
+  // 小票汇总（搜索/筛选时显示对应结果汇总）
+  const ft=detailFilter?(detailFilter==='income'?'收入':'支出')+' · ':'';
+  $('rcTitle').textContent=searchKeyword?`搜索结果 · ${viewMonth.m}月`:`${ft}${viewMonth.m}月账单 · ${viewMonth.y}`;
   const inc=sum(list,'income'),exp=sum(list,'expense');
   $('rcIn').textContent='¥'+fmt(inc);$('rcOut').textContent='¥'+fmt(exp);
   const bal=inc-exp;$('rcBal').textContent=(bal<0?'-':'')+'¥'+fmt(bal);
   $('rcBal').style.color=bal<0?'var(--red)':'var(--income)';
-  // 搜索信息
+  // 搜索 / 筛选信息
   const info=$('searchInfo');
-  if(searchKeyword){
+  const tags=[];
+  if(detailFilter)tags.push(detailFilter==='income'?'收入':'支出');
+  if(searchKeyword)tags.push(`「${searchKeyword}」`);
+  if(tags.length){
     info.hidden=false;
-    info.innerHTML=`🔍 找到 <b>${list.length}</b> 条匹配「${hl(searchKeyword)}」的记录`;
+    info.innerHTML=`${searchKeyword?`🔍 找到 <b>${list.length}</b> 条`:`共 <b>${list.length}</b> 条`}（${tags.join(' + ')}）`;
   }else info.hidden=true;
   // 快捷搜索标签
   renderSearchTags(allList);
   // 列表
   const box=$('dayList');
   if(!list.length){
-    box.innerHTML=searchKeyword
-      ?'<div class="empty"><div>🔍</div>没有找到匹配的记录<br>换个关键词试试？</div>'
+    const isFilter=detailFilter||searchKeyword;
+    box.innerHTML=isFilter
+      ?`<div class="empty"><div>🔍</div>${detailFilter?(detailFilter==='income'?'收入':'支出')+' ':''}${searchKeyword?'关键词 ':''}筛选下没有记录<br>换个条件试试？</div>`
       :'<div class="empty"><div>🗒️</div>这个月还没有记录<br>去记第一笔吧～</div>';
     return;
   }
@@ -527,6 +552,14 @@ $('searchClear').onclick=()=>{
   searchKeyword='';$('searchInput').value='';
   $('searchClear').classList.remove('show');renderDetails();
 };
+/* ★ 明细收入/支出筛选：点击切换，再次点击取消 */
+$('detailFilter').addEventListener('click',e=>{
+  const b=e.target.closest('.df-btn');if(!b)return;
+  const f=b.dataset.f;
+  detailFilter=detailFilter===f?'':f;
+  document.querySelectorAll('#detailFilter .df-btn').forEach(x=>x.classList.toggle('on',x.dataset.f===detailFilter));
+  renderDetails();
+});
 
 /* ══════════ 统计 ══════════ */
 function renderStats(){
